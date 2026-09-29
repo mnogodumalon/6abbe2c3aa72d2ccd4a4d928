@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "pages": [
+    {
+      "slug": "kursanmeldung",
+      "component": "Kursanmeldung",
+      "title": "Yoga-Kurs Anmeldung",
+      "endpoints": [
+        {
+          "entity": "kursverwaltung",
+          "op": "list",
+          "fields": [
+            "kursname",
+            "kursdatum",
+            "kursort",
+            "schwierigkeitsgrad",
+            "preis",
+            "max_teilnehmer"
+          ],
+          "scope": "r.v_kursdatum >= now()",
+          "scope_description": "Zeigt nur Kurse, deren Datum in der Zukunft liegt",
+          "max_records": 200
+        },
+        {
+          "entity": "kursanmeldung",
+          "op": "create",
+          "fields": [
+            "kurs",
+            "teilnehmer_vorname",
+            "teilnehmer_nachname",
+            "teilnehmer_email",
+            "teilnehmer_telefon",
+            "erfahrungslevel",
+            "anmerkungen"
+          ]
+        }
+      ]
+    }
+  ]
+}
