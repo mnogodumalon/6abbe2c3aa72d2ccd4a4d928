@@ -1,0 +1,27 @@
+{
+  "pages": {
+    "en": {
+      "Anmeldung erfassen": "Record Registration",
+      "Anmeldungen": "Registrations",
+      "Anmeldungen nach Yoga-Stil": "Registrations by Yoga Style",
+      "Diese Woche": "This Week",
+      "Heute: {0}": "Today: {0}",
+      "Kein Kurs": "No Course",
+      "Kein Kursleiter": "No Instructor",
+      "Kurs": "Course",
+      "Kurs verschoben auf {0}": "Course rescheduled to {0}",
+      "Kurse gesamt": "Total Courses",
+      "Kursleiter": "Instructor",
+      "Kursleiter zuweisen": "Assign Instructor",
+      "Neue Anmeldungen": "New Registrations",
+      "Neuer Kurs": "New Course",
+      "Noch keine Anmeldungen — Kurse anlegen und bewerben.": "No registrations yet — create and promote courses.",
+      "Noch keine Kurse geplant.": "No courses scheduled yet.",
+      "Nächster Kurs: {0} – {1}": "Next Course: {0} – {1}",
+      "Unbekannt": "Unknown",
+      "Yoga-Stil": "Yoga Style",
+      "{0} – kein Kursleiter zugewiesen.": "{0} – no instructor assigned."
+    }
+  },
+  "v": 1
+}

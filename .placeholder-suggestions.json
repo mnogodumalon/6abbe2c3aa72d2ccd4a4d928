@@ -1,0 +1,32 @@
+{
+  "KursleiterverwaltungDialog.tsx": {
+    "vorname": "z. B. Anna",
+    "nachname": "z. B. Schmidt",
+    "email": "z. B. anna.schmidt@yoga.de",
+    "telefon": "z. B. +49 30 12345678",
+    "yoga_stile": "Welche Yoga-Stile unterrichtet sie?",
+    "zertifizierungen": "z. B. RYT-200, RYT-500",
+    "biografie": "Erfahrung, Spezialisierungen, persönlicher Hintergrund..."
+  },
+  "KursverwaltungDialog.tsx": {
+    "kursname": "z. B. Hatha Yoga für Anfänger",
+    "beschreibung": "Was wird im Kurs behandelt? Kursinhalte, Fokus, Zielgruppe...",
+    "yoga_stil": "Wähle den Yoga-Stil",
+    "schwierigkeitsgrad": "Wähle den Schwierigkeitsgrad",
+    "kursdatum": "Wann startet der Kurs?",
+    "dauer_minuten": "z. B. 60",
+    "kursort": "z. B. Raum 1 / Studio Mitte",
+    "max_teilnehmer": "z. B. 12",
+    "preis": "z. B. 15,00",
+    "kursleiter": "Welcher Lehrer unterrichtet diesen Kurs?"
+  },
+  "KursanmeldungDialog.tsx": {
+    "teilnehmer_vorname": "z. B. Maria",
+    "teilnehmer_nachname": "z. B. Mueller",
+    "teilnehmer_email": "z. B. maria.mueller@example.de",
+    "teilnehmer_telefon": "z. B. +49 40 98765432",
+    "erfahrungslevel": "Dein Yoga-Erfahrungslevel?",
+    "kurs": "Für welchen Kurs möchtest du dich anmelden?",
+    "anmerkungen": "Besonderheiten, Verletzungen, Wünsche, Fragen..."
+  }
+}

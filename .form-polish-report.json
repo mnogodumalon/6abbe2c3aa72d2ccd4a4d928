@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "Kursleiterverwaltung": {
+      "placeholders_set": 7,
+      "defaults_keys": [],
+      "computed_keys": [],
+      "reason": "Reine Personenstammdaten (Name, Email, Kontakt, Qualifikationen). Keine numerischen Berechnung erkennbar — Yoga-Stile und Zertifizierungen sind deskriptiv."
+    },
+    "Kursverwaltung": {
+      "placeholders_set": 10,
+      "defaults_keys": ["kursdatum", "max_teilnehmer", "schwierigkeitsgrad"],
+      "computed_keys": [],
+      "reason": "Kurs-Metadaten mit zeitlichem Datum, Kapazität und Preis. Keine Berechnung: dauer_minuten ist direkte Eingabe (kein Start-/Endzeit-Paar für dateDiff), preis ist lokaler Input ohne Multiplikation oder Applookup-Preis-Target."
+    },
+    "Kursanmeldung": {
+      "placeholders_set": 7,
+      "defaults_keys": ["erfahrungslevel"],
+      "computed_keys": [],
+      "reason": "Anmeldungs-Registrierung für einen Kurs. Kein Aufenthalt-/Buchungs-Charakter (keine zwei Daten wie anreise/abreise), keine lokalen Number-Felder außer Lookup-Referenz. Der Kurs-Preis ist im Zielkurs gespeichert — keine Berechnung dieser Entity notwendig."
+    }
+  }
+}
