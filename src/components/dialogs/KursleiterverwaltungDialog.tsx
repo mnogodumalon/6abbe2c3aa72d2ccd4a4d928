@@ -88,6 +88,8 @@ export function KursleiterverwaltungDialog({ open, onClose, onSubmit, defaultVal
       return true;
     }
   }, [fields, normalizedDefaults]);
+  // Fields the plan assigns to a tool (empty without a plan).
+  const SYSTEM_ASSIGNED: string[] = [];
   const [showErrors, setShowErrors] = useState(false);
   const REQUIRED_FIELDS = ['vorname', 'nachname', 'email'] as const;
   const missingRequired = REQUIRED_FIELDS.filter(k => {
@@ -319,7 +321,7 @@ export function KursleiterverwaltungDialog({ open, onClose, onSubmit, defaultVal
         <Label htmlFor="vorname">{fieldLabel('kursleiterverwaltung', 'vorname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="vorname"
-          placeholder="z. B. Anna"
+          placeholder=""
           value={fields.vorname ?? ''}
           onChange={e => setFields(f => ({ ...f, vorname: e.target.value }))}
           required
@@ -334,7 +336,7 @@ export function KursleiterverwaltungDialog({ open, onClose, onSubmit, defaultVal
         <Label htmlFor="nachname">{fieldLabel('kursleiterverwaltung', 'nachname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="nachname"
-          placeholder="z. B. Schmidt"
+          placeholder=""
           value={fields.nachname ?? ''}
           onChange={e => setFields(f => ({ ...f, nachname: e.target.value }))}
           required
@@ -351,7 +353,7 @@ export function KursleiterverwaltungDialog({ open, onClose, onSubmit, defaultVal
           id="email"
           type="email"
           inputMode="email"
-          placeholder="z. B. anna.schmidt@yoga.de"
+          placeholder=""
           value={fields.email ?? ''}
           onChange={e => setFields(f => ({ ...f, email: e.target.value }))}
           required
@@ -368,7 +370,7 @@ export function KursleiterverwaltungDialog({ open, onClose, onSubmit, defaultVal
           id="telefon"
           type="tel"
           inputMode="tel"
-          placeholder="z. B. +49 30 12345678"
+          placeholder=""
           value={fields.telefon ?? ''}
           onChange={e => setFields(f => ({ ...f, telefon: e.target.value }))}
         />
@@ -498,7 +500,7 @@ export function KursleiterverwaltungDialog({ open, onClose, onSubmit, defaultVal
         <Label htmlFor="zertifizierungen">{fieldLabel('kursleiterverwaltung', 'zertifizierungen')}</Label>
         <Input
           id="zertifizierungen"
-          placeholder="z. B. RYT-200, RYT-500"
+          placeholder=""
           value={fields.zertifizierungen ?? ''}
           onChange={e => setFields(f => ({ ...f, zertifizierungen: e.target.value }))}
         />
@@ -509,7 +511,7 @@ export function KursleiterverwaltungDialog({ open, onClose, onSubmit, defaultVal
         <Label htmlFor="biografie">{fieldLabel('kursleiterverwaltung', 'biografie')}</Label>
         <Textarea
           id="biografie"
-          placeholder="Erfahrung, Spezialisierungen, persönlicher Hintergrund..."
+          placeholder=""
           value={fields.biografie ?? ''}
           onChange={e => setFields(f => ({ ...f, biografie: e.target.value }))}
           rows={3}
@@ -860,9 +862,25 @@ export function KursleiterverwaltungDialog({ open, onClose, onSubmit, defaultVal
               const renderField = (k: string) => {
                 const inlineHints = computedLayout.anchors[k] ?? [];
                 const refs = applookupRefs[k] ?? [];
+                // A field the plan gives to a TOOL. On CREATE it is not shown
+                // at all — the value does not exist yet and typing one only
+                // gets overwritten. On EDIT it stays a normal input with a
+                // note: when a tool could not compose its value (a missing
+                // ingredient), this is the only place to repair the record.
+                if (SYSTEM_ASSIGNED.includes(k) && !recordId) {
+                  return (
+                    <div key={k} className="space-y-1.5 min-w-0">
+                      <Label>{fieldLabel('kursleiterverwaltung', k)}</Label>
+                      <p className="text-sm text-muted-foreground">{t('assigned_by_system')}</p>
+                    </div>
+                  );
+                }
                 return (
                   <div key={k} className="space-y-1.5 min-w-0">
                     {fieldBlocks[k]}
+                    {SYSTEM_ASSIGNED.includes(k) && (
+                      <p className="text-xs text-muted-foreground">{t('assigned_by_system')}</p>
+                    )}
                     {refs.map(({ lookupKey }) => {
                       // Show the live numeric value the formula will pull from
                       // the selected lookup target (e.g. "Monatspreis: 34,90 €"

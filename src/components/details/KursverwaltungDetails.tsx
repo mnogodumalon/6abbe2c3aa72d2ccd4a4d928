@@ -6,6 +6,7 @@ import {
 } from '@/components/widgets/RecordView';
 import { t, appLabel, fieldLabel } from '@/i18n';
 import { SatelliteSection } from '@/components/SatelliteSection';
+import { usePermissions } from '@/lib/permissions';
 
 export interface KursverwaltungDetailsProps {
   /** Der Record — enriched oder roh; alle Felder werden hier gerendert. */
@@ -19,7 +20,7 @@ export interface KursverwaltungDetailsProps {
   /** Zeilen-Klick → overlay.push auf das Kursanmeldung-Detail (nie der Edit-Dialog). */
   onOpenKursanmeldung: (record: Kursanmeldung) => void;
   /** Kontextuelles „+": öffnet den Kursanmeldung-Dialog mit diesem Record vorgesetzt. */
-  onAddKursanmeldung: () => void;
+  onAddKursanmeldung?: () => void;
 }
 
 export function KursverwaltungDetails({
@@ -30,6 +31,8 @@ export function KursverwaltungDetails({
   onOpenKursanmeldung,
   onAddKursanmeldung,
 }: KursverwaltungDetailsProps) {
+  // attachments are a write to this record — read-only without the platform right
+  const perms = usePermissions();
   const kursleiterTarget = kursleiterverwaltungList.find(r => r.record_id === extractRecordId(record.fields.kursleiter));
   return (
     <>
@@ -64,7 +67,7 @@ export function KursverwaltungDetails({
         getKey={r => r.record_id}
       />
 
-      <RecordAttachments appId={APP_IDS.KURSVERWALTUNG} recordId={record.record_id} />
+      <RecordAttachments appId={APP_IDS.KURSVERWALTUNG} recordId={record.record_id} readOnly={!perms.canWrite('kursverwaltung')} />
     </>
   );
 }

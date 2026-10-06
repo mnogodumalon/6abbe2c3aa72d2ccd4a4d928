@@ -47,11 +47,20 @@ const CONFIRM_MS = 10000;
 
 const argv = process.argv.slice(2);
 const onlySlugs = [];
+// `--staged <file>`: an INTERNAL flow page a lane wrote to .intents-staging/
+// (or any src/pages/intents/*.tsx) — bundled from that path, mounted like
+// the app does under #/intents/<slug>, walked against a mocked /rest door.
+// Five live flows dead-ended on step 1 (24.09.2026) while every gate was
+// green: nothing had ever rendered an internal page before the deploy.
+const stagedFiles = [];
 let keep = false;
 let jsonOut = null;
+let prepareOnly = false;   // `--prepare`: fetch jsdom once, before the lanes start, then exit
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--page' && argv[i + 1]) onlySlugs.push(argv[++i]);
+  else if (argv[i] === '--staged' && argv[i + 1]) stagedFiles.push(argv[++i]);
   else if (argv[i] === '--keep') keep = true;
+  else if (argv[i] === '--prepare') prepareOnly = true;
   else if (argv[i] === '--json' && argv[i + 1]) jsonOut = argv[++i];
 }
 
@@ -64,10 +73,29 @@ function readJson(rel) {
 }
 
 // ── 1. What to smoke ──────────────────────────────────────────────────────────
-const surface = readJson(SURFACE);
-const allPages = (surface && Array.isArray(surface.pages)) ? surface.pages : [];
-const pages = allPages.filter(p => p && p.slug && p.component && (onlySlugs.length === 0 || onlySlugs.includes(p.slug)));
-if (pages.length === 0) {
+function kebab(name) {
+  return name.replace(/Page$/, '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+// A staged flow page: the slug lives in the lane's manifest, not in the file
+// name; without a manifest entry the component name is close enough for a URL.
+function stagedPage(file) {
+  const rel = file.replace(/\\/g, '/').replace(/^\.\//, '');
+  const component = rel.split('/').pop().replace(/\.tsx$/, '');
+  const manifest = readJson('.intents-staging/manifest.json');
+  const entry = ((manifest && manifest.flows) || []).find(f => f && (f.file === rel || String(f.file || '').endsWith('/' + component + '.tsx') || f.component === component));
+  return { slug: (entry && entry.slug) || kebab(component), component, file: rel, internal: true };
+}
+let pages;
+if (stagedFiles.length > 0) {
+  pages = stagedFiles.map(stagedPage);
+} else {
+  const surface = readJson(SURFACE);
+  const allPages = (surface && Array.isArray(surface.pages)) ? surface.pages : [];
+  pages = allPages
+    .filter(p => p && p.slug && p.component && (onlySlugs.length === 0 || onlySlugs.includes(p.slug)))
+    .map(p => ({ ...p, file: `${PAGES_DIR}/${p.component}.tsx`, internal: false }));
+}
+if (pages.length === 0 && !prepareOnly) {
   console.log('render-smoke: OK (no public pages declared)');
   process.exit(0);
 }
@@ -103,25 +131,44 @@ if (!esbuild) {
 }
 let jsdomMod = await loadDep('jsdom');
 if (!jsdomMod) {
+  // One installer per tree: six lanes reach check-staging within seconds of
+  // each other, and six concurrent `npm install` into the same directory
+  // corrupt it. mkdir is the atomic lock; the others wait for the winner.
   const tInstall = Date.now();
-  try {
-    mkdirSync(DEPS_DIR, { recursive: true });
-    if (!existsSync(join(DEPS_DIR, 'package.json'))) {
-      writeFileSync(join(DEPS_DIR, 'package.json'), JSON.stringify({ name: 'render-smoke-deps', private: true, version: '0.0.0' }));
+  const lockDir = join(ROOT, SMOKE_DIR, 'deps.installing');
+  mkdirSync(join(ROOT, SMOKE_DIR), { recursive: true });
+  let owner = false;
+  try { mkdirSync(lockDir); owner = true; } catch { owner = false; }
+  if (owner) {
+    try {
+      mkdirSync(DEPS_DIR, { recursive: true });
+      if (!existsSync(join(DEPS_DIR, 'package.json'))) {
+        writeFileSync(join(DEPS_DIR, 'package.json'), JSON.stringify({ name: 'render-smoke-deps', private: true, version: '0.0.0' }));
+      }
+      execSync('npm install --no-audit --no-fund --no-package-lock --loglevel=error jsdom@26', {
+        cwd: DEPS_DIR, stdio: ['ignore', 'inherit', 'inherit'], timeout: 180000,
+      });
+      jsdomMod = await loadDep('jsdom');
+      console.log(`render-smoke: jsdom installed into ${SMOKE_DIR}/deps in ${secs(tInstall)}s`);
+    } catch (e) {
+      console.log(`WARN: render-smoke: jsdom install failed after ${secs(tInstall)}s (${String(e && e.message || e).split('\n')[0]}) — smoke skipped`);
+    } finally {
+      try { rmSync(lockDir, { recursive: true, force: true }); } catch { /* fine */ }
     }
-    execSync('npm install --no-audit --no-fund --no-package-lock --loglevel=error jsdom@26', {
-      cwd: DEPS_DIR, stdio: ['ignore', 'inherit', 'inherit'], timeout: 180000,
-    });
+  } else {
+    for (let waited = 0; waited < 180000 && existsSync(lockDir); waited += 1000) await new Promise(r => setTimeout(r, 1000));
     jsdomMod = await loadDep('jsdom');
-    console.log(`render-smoke: jsdom installed into ${SMOKE_DIR}/deps in ${secs(tInstall)}s`);
-  } catch (e) {
-    console.log(`WARN: render-smoke: jsdom install failed after ${secs(tInstall)}s (${String(e && e.message || e).split('\n')[0]}) — smoke skipped`);
+    if (jsdomMod) console.log(`render-smoke: jsdom installed by a parallel run (waited ${secs(tInstall)}s)`);
   }
 } else {
   console.log('render-smoke: jsdom present');
 }
 if (!jsdomMod) {
   console.log('WARN: render-smoke: jsdom not available — smoke skipped');
+  process.exit(0);
+}
+if (prepareOnly) {
+  console.log(`render-smoke: prepared (esbuild + jsdom ready, ${secs(tStart)}s)`);
   process.exit(0);
 }
 const { JSDOM } = jsdomMod;
@@ -412,6 +459,48 @@ function makeFetch(cfg, log) {
         log.created.push({ app_id: m[1], fields });
         return json({ id, fields, created_at: new Date().toISOString().slice(0, 19), updated_at: null }, 201);
       }
+      // The internal door (livingAppsService via servicePort): the same
+      // synthetic records, the app's REST shapes — a list is a map keyed by
+      // id, one record carries `id`, aggregate_records answers [[n]].
+      m = /\/rest\/apps\/([^/?]+)\/aggregate_records/.exec(url);
+      if (m) {
+        const entity = entityByAppId(m[1]);
+        return json([[entity ? Object.keys(recordsFor(entity)).length : 0]]);
+      }
+      m = /\/rest\/apps\/([^/?]+)\/records\/([^/?]+)(\?|$)/.exec(url);
+      if (m && method === 'GET') {
+        const entity = entityByAppId(m[1]);
+        const rec = entity ? recordsFor(entity)[m[2]] : null;
+        return rec ? json(rec) : json({ detail: 'not found' }, 404);
+      }
+      if (m && method === 'PATCH') {
+        const entity = entityByAppId(m[1]);
+        const rec = entity ? recordsFor(entity)[m[2]] : null;
+        if (!rec) return json({ detail: 'not found' }, 404);
+        let fields = {};
+        try { fields = JSON.parse(init && init.body || '{}').fields || {}; } catch { /* body not JSON */ }
+        rec.fields = { ...rec.fields, ...fields };
+        rec.updated_at = new Date().toISOString().slice(0, 19);
+        log.updated.push({ app_id: m[1], id: m[2], fields });
+        return json(rec);
+      }
+      if (m && method === 'DELETE') return new Response('', { status: 204 });
+      m = /\/rest\/apps\/([^/?]+)\/records(\?|$)/.exec(url);
+      if (m && method === 'GET') {
+        const entity = entityByAppId(m[1]);
+        return json(entity ? recordsFor(entity) : {});
+      }
+      if (m && method === 'POST') {
+        let fields = {};
+        try { fields = JSON.parse(init && init.body || '{}').fields || {}; } catch { /* body not JSON */ }
+        const id = hex24('created:' + log.created.length);
+        const entity = entityByAppId(m[1]);
+        const rec = { id, fields, created_at: new Date().toISOString().slice(0, 19), updated_at: null };
+        if (entity) recordsFor(entity)[id] = rec;
+        log.created.push({ app_id: m[1], fields });
+        return json(rec, 201);
+      }
+      if (/\/rest\/user(\?|$)/.test(url)) return json({ id: 'smoke-user', name: 'Smoke' });
       if (/sentry|\/rest\/|\/litellm\//.test(url)) return new Response('', { status: 204 });
       log.unexpected.push(`${method} ${url}`);
       return new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } });
@@ -426,12 +515,12 @@ function makeFetch(cfg, log) {
 // ── 5. A browser-shaped global scope ──────────────────────────────────────────
 const installedGlobals = new Set();
 
-function installDom(slug, onJsdomError) {
+function installDom(slug, onJsdomError, internal = false) {
   const virtualConsole = new jsdomMod.VirtualConsole();
   virtualConsole.sendTo(console, { omitJSDOMErrors: true });
   virtualConsole.on('jsdomError', (e) => onJsdomError(e));
   const dom = new JSDOM('<!doctype html><html lang="de"><head></head><body><div id="root"></div></body></html>', {
-    url: `http://smoke.invalid/objects/smoke/#/public/${slug}`,
+    url: `http://smoke.invalid/objects/smoke/#/${internal ? 'intents' : 'public'}/${slug}`,
     pretendToBeVisual: true,
     virtualConsole,
   });
@@ -496,7 +585,7 @@ async function bundlePage(page) {
     "import React from 'react';",
     "import { createRoot } from 'react-dom/client';",
     "import { HashRouter } from 'react-router-dom';",
-    `import Page from '../${PAGES_DIR}/${page.component}';`,
+    `import Page from '../${page.file.replace(/\.tsx$/, '')}';`,
     'export { React, createRoot, HashRouter, Page };',
     '',
   ].join('\n'));
@@ -688,13 +777,13 @@ function alertsIn(doc) {
 }
 
 async function smokePage(page) {
-  const file = `${PAGES_DIR}/${page.component}.tsx`;
-  const pageReport = { slug: page.slug, file, steps: [], result: 'unknown', errors: [], warnings: [], requests: [] };
+  const file = page.file;
+  const pageReport = { slug: page.slug, file, internal: Boolean(page.internal), steps: [], result: 'unknown', errors: [], warnings: [], requests: [] };
   const fail = (msg) => { pageReport.errors.push(msg); errors.push(`${file}: render-smoke '${page.slug}': ${msg}`); };
   const warn = (msg) => { pageReport.warnings.push(msg); warnings.push(`${file}: render-smoke '${page.slug}': ${msg}`); };
 
   if (!existsSync(join(ROOT, file))) {
-    fail(`declared in ${SURFACE} but ${file} does not exist`);
+    fail(page.internal ? `${file} does not exist` : `declared in ${SURFACE} but ${file} does not exist`);
     pageReport.result = 'missing';
     return pageReport;
   }
@@ -711,9 +800,13 @@ async function smokePage(page) {
     return pageReport;
   }
 
-  const cfg = { version: 1, public_api_base: PUBLIC_API_BASE, pages: { [page.slug]: applyPolicy(pageConfig(page), providedPolicy[page.slug]) }, unpublished_count: 0 };
-  if (providedPolicy[page.slug]) pageReport.policy = providedPolicy[page.slug];
-  const log = { requests: [], created: [], unexpected: [] };
+  // A public page gets its synthetic grant config; an internal page talks to
+  // the app's own door and needs none.
+  const cfg = page.internal
+    ? { version: 1, public_api_base: PUBLIC_API_BASE, pages: {}, unpublished_count: 0 }
+    : { version: 1, public_api_base: PUBLIC_API_BASE, pages: { [page.slug]: applyPolicy(pageConfig(page), providedPolicy[page.slug]) }, unpublished_count: 0 };
+  if (!page.internal && providedPolicy[page.slug]) pageReport.policy = providedPolicy[page.slug];
+  const log = { requests: [], created: [], updated: [], unexpected: [] };
 
   const runtimeErrors = [];
   const consoleNoise = [];
@@ -727,7 +820,7 @@ async function smokePage(page) {
     if (looksLikeError(line)) runtimeErrors.push(short); else consoleNoise.push(short);
   };
   const onWindowError = (ev) => { runtimeErrors.push(String(ev && (ev.error && ev.error.stack || ev.message) || ev).slice(0, 500)); };
-  const dom = installDom(page.slug, (e) => { runtimeErrors.push(`uncaught: ${String(e && (e.detail && e.detail.stack || e.message) || e).slice(0, 400)}`); });
+  const dom = installDom(page.slug, (e) => { runtimeErrors.push(`uncaught: ${String(e && (e.detail && e.detail.stack || e.message) || e).slice(0, 400)}`); }, page.internal);
   const doc = dom.window.document;
   const fetchImpl = makeFetch(cfg, log);
   dom.window.fetch = fetchImpl;
@@ -760,7 +853,20 @@ async function smokePage(page) {
       pageReport.result = 'crash';
       return pageReport;
     }
-    if (doc.querySelector('[data-public-unavailable]')) {
+    // An internal wizard opens with its start screen ("So funktioniert's" +
+    // "Los geht's"); the visitor presses the button, so does the smoke.
+    const start = doc.querySelector('[data-journey-intro] [data-journey-start]');
+    if (start && visible(start)) {
+      click(start);
+      await settle(doc, fetchImpl);
+      pageReport.steps.push({ step: 'intro', text: 'start pressed' });
+      if (crashed()) {
+        fail(`crashes after the start screen: ${String((boundaryError && boundaryError.message) || text(doc.querySelector('[data-smoke-crash]'))).slice(0, 300)}`);
+        pageReport.result = 'crash';
+        return pageReport;
+      }
+    }
+    if (!page.internal && doc.querySelector('[data-public-unavailable]')) {
       fail(`reports "not available" against its own declaration — the page loads a slug or endpoint the surface does not declare (requests: ${log.requests.filter(r => !/sentry/.test(r)).slice(0, 4).join(' | ')})`);
       pageReport.result = 'unavailable';
       return pageReport;
@@ -837,9 +943,16 @@ async function smokePage(page) {
       if (option) { click(option); actions.push(`option ${text(option).slice(0, 30)}`); await settle(doc, fetchImpl, 1500); }
       pageReport.steps.push({ step, label, actions, text: stepText.slice(0, 300) });
 
+      // A single pick on a step without StepNav moves on by itself (the layer
+      // owns that step change): the example input already left the step.
+      if (currentStep(doc) !== step || doc.querySelector('[data-journey-summary], [data-journey-success]')) {
+        lastStep = step; stuckRounds = 0; enteringStep = currentStep(doc);
+        continue;
+      }
+
       const next = Array.from(doc.querySelectorAll('[data-journey-next]')).find(visible);
       if (!next) {
-        warn(`step ${step} "${label}" has no StepNav "Weiter" — the smoke cannot walk further`);
+        warn(`step ${step} "${label}" has no StepNav "Weiter" and no pick that moves on — the smoke cannot walk further`);
         pageReport.result = 'no-next';
         return pageReport;
       }
@@ -893,6 +1006,7 @@ async function smokePage(page) {
     if (consoleNoise.length) pageReport.console = consoleNoise.slice(0, 10);
     pageReport.requests = log.requests.filter(r => !/sentry/.test(r)).slice(0, 20);
     pageReport.created = log.created;
+    pageReport.updated = log.updated;
     if (log.unexpected.length) pageReport.warnings.push(`unexpected requests: ${log.unexpected.slice(0, 5).join(' | ')}`);
     try { if (root) root.unmount(); } catch { /* already gone */ }
     console.error = origConsoleError;

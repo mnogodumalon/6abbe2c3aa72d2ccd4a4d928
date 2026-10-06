@@ -57,6 +57,9 @@ export interface SummaryItem {
    *  Live: a required fieldId made a flow invent `fieldId: 'status'` for a
    *  row no field owned. */
   fieldId?: string;
+  /** A row nobody answers here — a value the flow sets itself. "Ändern"
+   *  then leads to the page that changes it („Nach dem Bau“), not to a step. */
+  href?: string;
 }
 
 export interface FormError {

@@ -329,8 +329,10 @@ async function callApi(method: string, endpoint: string, data?: any, options?: C
     throw netErr;
   }
   if (!response.ok) {
-    // 401/403 go to the login screen only — never to the errorbus (repair can't fix auth).
-    const isAuthError = response.status === 401 || response.status === 403;
+    // 401 = not signed in → the login screen, never the errorbus (repair can't fix auth).
+    // 403 = signed in, but this list is not theirs to read or write: a notice,
+    // the page stays (05.10.2026 — it used to say „not logged in“ and blank everything).
+    const isAuthError = response.status === 401;
     if (isAuthError) window.dispatchEvent(new Event('auth-error'));
     const { message, raw } = await parseErrorBody(response);
     const err = new LivingAppsApiError(message, response.status, raw);
@@ -367,7 +369,10 @@ export async function uploadFile(file: File | Blob, filename?: string): Promise<
     body: formData,
   });
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) window.dispatchEvent(new Event('auth-error'));
+    if (res.status === 401) window.dispatchEvent(new Event('auth-error'));
+    else if (res.status === 403) window.dispatchEvent(new CustomEvent('errorbus:emit', { detail: {
+      source: 'api', status: 403, message: 'File upload failed: 403',
+    } }));
     throw new Error(`File upload failed: ${res.status}`);
   }
   const data = await res.json();
@@ -745,7 +750,11 @@ import PublicPageFields from '@/pages/PublicPageFields';
 import IntentFields from '@/pages/IntentFields';
 import { IntentPolicyLoader } from '@/components/IntentPolicyLoader';
 import IntentsAdmin from '@/pages/IntentsAdmin';
+import AppMap from '@/pages/AppMap';
 // <custom:imports>
+const IntentKursAnlegenPage = lazy(() => import('@/pages/intents/KursAnlegenPage'));
+import { DashboardSkeleton } from '@/components/DashboardStates';
+const IntentKursAnmeldungPage = lazy(() => import('@/pages/intents/KursAnmeldungPage'));
 // </custom:imports>
 
 // Lazy: public pages live outside <Layout> and only load on /#/public/:slug —
@@ -812,10 +821,13 @@ export default function App() {
               <Route element={<Layout />}>
                 <Route index element={<DashboardReady />} />
                 <Route path="verwaltung/ablaeufe" element={<IntentsAdmin />} />
+                <Route path="verwaltung/anwendung" element={<AppMap />} />
                 <Route path="verwaltung/ablaeufe/:slug/felder" element={<IntentFields />} />
                 <Route path="verwaltung/oeffentliche-seiten" element={<PublicPagesAdmin />} />
                 <Route path="verwaltung/oeffentliche-seiten/:slug/felder" element={<PublicPageFields />} />
                 {/* <custom:routes> */}
+                <Route path="intents/kurs-anlegen" element={<Suspense fallback={<DashboardSkeleton />}><IntentKursAnlegenPage /></Suspense>} />
+                <Route path="intents/kurs-anmeldung" element={<Suspense fallback={<DashboardSkeleton />}><IntentKursAnmeldungPage /></Suspense>} />
                 {/* </custom:routes> */}
                 {/* An unknown hash (a bookmark from before a rebuild renamed the
                     flows, a mistyped link) must not be a blank page. */}
@@ -840,6 +852,7 @@ import { IntentsNav } from '@/components/IntentsNav';
 import { ActionsSidebar } from '@/components/ActionsSidebar';
 import { Button } from '@/components/ui/button';
 import { VersionCheck } from '@/components/VersionCheck';
+import { PlanNotice } from '@/components/PlanNotice';
 // Sprachwechsel kommt aus der Plattform-Topnav: sie schreibt <html lang>,
 // src/i18n beobachtet das Attribut und LocaleGate remountet den Baum.
 import { t, appgroupLabel } from '@/i18n';
@@ -1036,7 +1049,10 @@ export function Layout() {
               }}>{t('auth_login_button')}</Button>
             </div>
           ) : (
-            <Outlet />
+            <>
+              {location.pathname === '/' && <PlanNotice />}
+              <Outlet />
+            </>
           )}
         </main>
       </div>
@@ -1048,108 +1064,4 @@ export function Layout() {
   );
 }
 
-```
-
-## src/hooks/useDashboardData.ts
-```
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { Kursleiterverwaltung, Kursverwaltung, Kursanmeldung } from '@/types/app';
-import { LivingAppsService } from '@/services/livingAppsService';
-import { t } from '@/i18n';
-
-/** Dashboard data + the OPTIMISTIC-WRITE API.
- *
- *  The per-entity setters (`set<Entity>`) are exported for exactly one job:
- *  optimistic updates on drag writes (onEventDrop / onEventResize /
- *  onCardMove). Call the setter FIRST — the bar/card lands instantly — then
- *  fire the PATCH in the background and call `fetchAll()` ONLY in the catch.
- *  Never await the PATCH before updating state (the UI freezes for the full
- *  round-trip on every drag) and never refetch after a successful write.
- *  There is no other mechanism (no `__optimistic`, no `mutate`).
- */
-/** Entities this hook can load — the same keys the journey layer uses. */
-export type DashboardEntity = 'kursleiterverwaltung' | 'kursverwaltung' | 'kursanmeldung';
-
-export interface DashboardDataOptions {
-  /** Entities this page does NOT need (picked through useRecordSearch instead).
-   *  Every flow page mounts this hook on its own route, so without `omit` a
-   *  page that searches 3.000 guests server-side would still pull all 3.000
-   *  through the side door. */
-  omit?: DashboardEntity[];
-}
-
-export function useDashboardData(options: DashboardDataOptions = {}) {
-  // A string key, not the array: an inline `omit={['gaeste']}` is a new array
-  // on every render and would restart the fetch forever.
-  const omitKey = (options.omit ?? []).slice().sort().join('|');
-  const [kursleiterverwaltung, setKursleiterverwaltung] = useState<Kursleiterverwaltung[]>([]);
-  const [kursverwaltung, setKursverwaltung] = useState<Kursverwaltung[]>([]);
-  const [kursanmeldung, setKursanmeldung] = useState<Kursanmeldung[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const fetchAll = useCallback(async () => {
-    setError(null);
-    const omit = new Set(omitKey ? omitKey.split('|') : []);
-    try {
-      const [kursleiterverwaltungData, kursverwaltungData, kursanmeldungData] = await Promise.all([
-        omit.has('kursleiterverwaltung') ? Promise.resolve([] as Kursleiterverwaltung[]) : LivingAppsService.getKursleiterverwaltung(),
-        omit.has('kursverwaltung') ? Promise.resolve([] as Kursverwaltung[]) : LivingAppsService.getKursverwaltung(),
-        omit.has('kursanmeldung') ? Promise.resolve([] as Kursanmeldung[]) : LivingAppsService.getKursanmeldung(),
-      ]);
-      setKursleiterverwaltung(kursleiterverwaltungData);
-      setKursverwaltung(kursverwaltungData);
-      setKursanmeldung(kursanmeldungData);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(t('data_load_failed')));
-    } finally {
-      setLoading(false);
-    }
-  }, [omitKey]);
-
-  useEffect(() => { fetchAll(); }, [fetchAll]);
-
-  // Silent background refresh (no loading state change → no flicker)
-  useEffect(() => {
-    const omit = new Set(omitKey ? omitKey.split('|') : []);
-    async function silentRefresh() {
-      try {
-        const [kursleiterverwaltungData, kursverwaltungData, kursanmeldungData] = await Promise.all([
-          omit.has('kursleiterverwaltung') ? Promise.resolve([] as Kursleiterverwaltung[]) : LivingAppsService.getKursleiterverwaltung(),
-          omit.has('kursverwaltung') ? Promise.resolve([] as Kursverwaltung[]) : LivingAppsService.getKursverwaltung(),
-          omit.has('kursanmeldung') ? Promise.resolve([] as Kursanmeldung[]) : LivingAppsService.getKursanmeldung(),
-        ]);
-        setKursleiterverwaltung(kursleiterverwaltungData);
-        setKursverwaltung(kursverwaltungData);
-        setKursanmeldung(kursanmeldungData);
-      } catch {
-        // silently ignore — stale data is better than no data
-      }
-    }
-    function handleRefresh() { void silentRefresh(); }
-    // assistant:data-changed comes from the assistant (<la-klar-assistant>)
-    // after every mutation. The element additionally fires the legacy
-    // dashboard-refresh event for OLD deployed bundles — do NOT subscribe to
-    // both here, or every mutation fetches twice.
-    window.addEventListener('assistant:data-changed', handleRefresh);
-    return () => window.removeEventListener('assistant:data-changed', handleRefresh);
-  }, [omitKey]);
-
-  const kursleiterverwaltungMap = useMemo(() => {
-    const m = new Map<string, Kursleiterverwaltung>();
-    kursleiterverwaltung.forEach(r => m.set(r.record_id, r));
-    return m;
-  }, [kursleiterverwaltung]);
-
-  const kursverwaltungMap = useMemo(() => {
-    const m = new Map<string, Kursverwaltung>();
-    kursverwaltung.forEach(r => m.set(r.record_id, r));
-    return m;
-  }, [kursverwaltung]);
-
-  return { kursleiterverwaltung, setKursleiterverwaltung, kursverwaltung, setKursverwaltung, kursanmeldung, setKursanmeldung, loading, error, fetchAll, kursleiterverwaltungMap, kursverwaltungMap };
-}
-
-/** The hook's return — the `data` prop of DashboardOverview in the Ready-Wrapper form. */
-export type DashboardData = ReturnType<typeof useDashboardData>;
 ```

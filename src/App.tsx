@@ -12,6 +12,7 @@ import PublicPageFields from '@/pages/PublicPageFields';
 import IntentFields from '@/pages/IntentFields';
 import { IntentPolicyLoader } from '@/components/IntentPolicyLoader';
 import IntentsAdmin from '@/pages/IntentsAdmin';
+import AppMap from '@/pages/AppMap';
 // <custom:imports>
 const IntentKursAnlegenPage = lazy(() => import('@/pages/intents/KursAnlegenPage'));
 import { DashboardSkeleton } from '@/components/DashboardStates';
@@ -82,6 +83,7 @@ export default function App() {
               <Route element={<Layout />}>
                 <Route index element={<DashboardReady />} />
                 <Route path="verwaltung/ablaeufe" element={<IntentsAdmin />} />
+                <Route path="verwaltung/anwendung" element={<AppMap />} />
                 <Route path="verwaltung/ablaeufe/:slug/felder" element={<IntentFields />} />
                 <Route path="verwaltung/oeffentliche-seiten" element={<PublicPagesAdmin />} />
                 <Route path="verwaltung/oeffentliche-seiten/:slug/felder" element={<PublicPageFields />} />

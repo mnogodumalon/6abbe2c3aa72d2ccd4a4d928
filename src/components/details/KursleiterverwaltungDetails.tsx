@@ -7,6 +7,7 @@ import {
 import { t, appLabel, fieldLabel } from '@/i18n';
 import { MediaThumbnail } from '@/components/widgets/MediaViewer';
 import { SatelliteSection } from '@/components/SatelliteSection';
+import { usePermissions } from '@/lib/permissions';
 
 export interface KursleiterverwaltungDetailsProps {
   /** Der Record — enriched oder roh; alle Felder werden hier gerendert. */
@@ -16,7 +17,7 @@ export interface KursleiterverwaltungDetailsProps {
   /** Zeilen-Klick → overlay.push auf das Kursverwaltung-Detail (nie der Edit-Dialog). */
   onOpenKursverwaltung: (record: Kursverwaltung) => void;
   /** Kontextuelles „+": öffnet den Kursverwaltung-Dialog mit diesem Record vorgesetzt. */
-  onAddKursverwaltung: () => void;
+  onAddKursverwaltung?: () => void;
 }
 
 export function KursleiterverwaltungDetails({
@@ -25,6 +26,8 @@ export function KursleiterverwaltungDetails({
   onOpenKursverwaltung,
   onAddKursverwaltung,
 }: KursleiterverwaltungDetailsProps) {
+  // attachments are a write to this record — read-only without the platform right
+  const perms = usePermissions();
   return (
     <>
       <RecordSection title={t('details')} cols={2}>
@@ -51,7 +54,7 @@ export function KursleiterverwaltungDetails({
         getKey={r => r.record_id}
       />
 
-      <RecordAttachments appId={APP_IDS.KURSLEITERVERWALTUNG} recordId={record.record_id} />
+      <RecordAttachments appId={APP_IDS.KURSLEITERVERWALTUNG} recordId={record.record_id} readOnly={!perms.canWrite('kursleiterverwaltung')} />
     </>
   );
 }

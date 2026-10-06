@@ -124,6 +124,8 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
     setCreateKursleiterverwaltungInitial(q);
     setCreateKursleiterverwaltungOpen(true);
   }
+  // Fields the plan assigns to a tool (empty without a plan).
+  const SYSTEM_ASSIGNED: string[] = [];
   const [showErrors, setShowErrors] = useState(false);
   const REQUIRED_FIELDS = ['kursname', 'yoga_stil', 'schwierigkeitsgrad', 'kursdatum', 'dauer_minuten', 'max_teilnehmer', 'kursleiter'] as const;
   const missingRequired = REQUIRED_FIELDS.filter(k => {
@@ -354,7 +356,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
         <Label htmlFor="kursname">{fieldLabel('kursverwaltung', 'kursname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="kursname"
-          placeholder="z. B. Hatha Yoga für Anfänger"
+          placeholder=""
           value={fields.kursname ?? ''}
           onChange={e => setFields(f => ({ ...f, kursname: e.target.value }))}
           required
@@ -369,7 +371,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
         <Label htmlFor="beschreibung">{fieldLabel('kursverwaltung', 'beschreibung')}</Label>
         <Textarea
           id="beschreibung"
-          placeholder="Was wird im Kurs behandelt? Kursinhalte, Fokus, Zielgruppe..."
+          placeholder=""
           value={fields.beschreibung ?? ''}
           onChange={e => setFields(f => ({ ...f, beschreibung: e.target.value }))}
           rows={3}
@@ -383,7 +385,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
           value={lookupKey(fields.yoga_stil) ?? ''}
           onValueChange={v => setFields(f => ({ ...f, yoga_stil: v === 'none' ? undefined : v as any }))}
         >
-          <SelectTrigger id="yoga_stil" className="max-sm:h-11"><SelectValue placeholder="Wähle den Yoga-Stil" /></SelectTrigger>
+          <SelectTrigger id="yoga_stil" className="max-sm:h-11"><SelectValue placeholder="" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="none">—</SelectItem>
             <SelectItem value="hatha">{lookupLabel('kursverwaltung', 'yoga_stil', 'hatha') ?? 'Hatha Yoga'}</SelectItem>
@@ -455,7 +457,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
         <Label htmlFor="kursdatum">{fieldLabel('kursverwaltung', 'kursdatum')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <DatePicker
           id="kursdatum"
-          placeholder="Wann startet der Kurs?"
+          placeholder=""
           mode="datetime"
           value={fields.kursdatum ?? null}
           onChange={v => setFields(f => ({ ...f, kursdatum: v ?? undefined }))}
@@ -475,7 +477,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
           inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'dauer_minuten')}
-          placeholder="z. B. 60"
+          placeholder=""
           value={fields.dauer_minuten !== undefined ? fields.dauer_minuten : (computedValues['dauer_minuten'] ?? '')}
           onChange={e => setFields(f => ({ ...f, dauer_minuten: clampNumberValue(formEnhancements, 'dauer_minuten', e.target.value) }))}
         />
@@ -489,7 +491,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
         <Label htmlFor="kursort">{fieldLabel('kursverwaltung', 'kursort')}</Label>
         <Input
           id="kursort"
-          placeholder="z. B. Raum 1 / Studio Mitte"
+          placeholder=""
           value={fields.kursort ?? ''}
           onChange={e => setFields(f => ({ ...f, kursort: e.target.value }))}
         />
@@ -504,7 +506,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
           inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'max_teilnehmer')}
-          placeholder="z. B. 12"
+          placeholder=""
           value={fields.max_teilnehmer !== undefined ? fields.max_teilnehmer : (computedValues['max_teilnehmer'] ?? '')}
           onChange={e => setFields(f => ({ ...f, max_teilnehmer: clampNumberValue(formEnhancements, 'max_teilnehmer', e.target.value) }))}
         />
@@ -522,7 +524,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
           inputMode="decimal"
           step="any"
           {...numberInputProps(formEnhancements, 'preis')}
-          placeholder="z. B. 15,00"
+          placeholder=""
           value={fields.preis !== undefined ? fields.preis : (computedValues['preis'] ?? '')}
           onChange={e => setFields(f => ({ ...f, preis: clampNumberValue(formEnhancements, 'preis', e.target.value) }))}
         />
@@ -533,7 +535,7 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
         <Label htmlFor="kursleiter">{fieldLabel('kursverwaltung', 'kursleiter')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Combobox
           id="kursleiter"
-          placeholder="Welcher Lehrer unterrichtet diesen Kurs?"
+          placeholder=""
           items={kursleiterverwaltungListAll.map(r => ({
             id: r.record_id,
             label: String(r.fields.vorname ?? r.record_id),
@@ -822,9 +824,25 @@ export function KursverwaltungDialog({ open, onClose, onSubmit, defaultValues, r
               const renderField = (k: string) => {
                 const inlineHints = computedLayout.anchors[k] ?? [];
                 const refs = applookupRefs[k] ?? [];
+                // A field the plan gives to a TOOL. On CREATE it is not shown
+                // at all — the value does not exist yet and typing one only
+                // gets overwritten. On EDIT it stays a normal input with a
+                // note: when a tool could not compose its value (a missing
+                // ingredient), this is the only place to repair the record.
+                if (SYSTEM_ASSIGNED.includes(k) && !recordId) {
+                  return (
+                    <div key={k} className="space-y-1.5 min-w-0">
+                      <Label>{fieldLabel('kursverwaltung', k)}</Label>
+                      <p className="text-sm text-muted-foreground">{t('assigned_by_system')}</p>
+                    </div>
+                  );
+                }
                 return (
                   <div key={k} className="space-y-1.5 min-w-0">
                     {fieldBlocks[k]}
+                    {SYSTEM_ASSIGNED.includes(k) && (
+                      <p className="text-xs text-muted-foreground">{t('assigned_by_system')}</p>
+                    )}
                     {refs.map(({ lookupKey }) => {
                       // Show the live numeric value the formula will pull from
                       // the selected lookup target (e.g. "Monatspreis: 34,90 €"

@@ -33,25 +33,46 @@ export function useDashboardData(options: DashboardDataOptions = {}) {
   const [kursanmeldung, setKursanmeldung] = useState<Kursanmeldung[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  /** Lists the signed-in user may not read (403 on the platform). They load as
+   *  empty and the rest of the page loads normally — one forbidden list used to
+   *  empty the whole dashboard (05.10.2026). Hide a block whose list is here. */
+  const [forbidden, setForbidden] = useState<DashboardEntity[]>([]);
+
+  // Every list on its own: a 403 is „not yours“, any other failure is an error.
+  const settle = useCallback((settled: PromiseSettledResult<unknown>[]) => {
+    const denied: DashboardEntity[] = [];
+    let failure: unknown = null;
+    // null = this list failed for another reason: its current data stays
+    const pick = <T,>(i: number, key: DashboardEntity): T[] | null => {
+      const s = settled[i];
+      if (s.status === 'fulfilled') return s.value as T[];
+      if ((s.reason as { status?: number } | null)?.status === 403) { denied.push(key); return []; }
+      failure = failure ?? s.reason;
+      return null;
+    };
+    { const rows = pick<Kursleiterverwaltung>(0, 'kursleiterverwaltung'); if (rows) setKursleiterverwaltung(rows); }
+    { const rows = pick<Kursverwaltung>(1, 'kursverwaltung'); if (rows) setKursverwaltung(rows); }
+    { const rows = pick<Kursanmeldung>(2, 'kursanmeldung'); if (rows) setKursanmeldung(rows); }
+    setForbidden(prev => (prev.join('|') === denied.join('|') ? prev : denied));
+    return failure;
+  }, []);
 
   const fetchAll = useCallback(async () => {
     setError(null);
     const omit = new Set(omitKey ? omitKey.split('|') : []);
     try {
-      const [kursleiterverwaltungData, kursverwaltungData, kursanmeldungData] = await Promise.all([
+      const failure = settle(await Promise.allSettled([
         omit.has('kursleiterverwaltung') ? Promise.resolve([] as Kursleiterverwaltung[]) : LivingAppsService.getKursleiterverwaltung(),
         omit.has('kursverwaltung') ? Promise.resolve([] as Kursverwaltung[]) : LivingAppsService.getKursverwaltung(),
         omit.has('kursanmeldung') ? Promise.resolve([] as Kursanmeldung[]) : LivingAppsService.getKursanmeldung(),
-      ]);
-      setKursleiterverwaltung(kursleiterverwaltungData);
-      setKursverwaltung(kursverwaltungData);
-      setKursanmeldung(kursanmeldungData);
+      ]));
+      if (failure) throw failure;
     } catch (err) {
       setError(err instanceof Error ? err : new Error(t('data_load_failed')));
     } finally {
       setLoading(false);
     }
-  }, [omitKey]);
+  }, [omitKey, settle]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -60,14 +81,13 @@ export function useDashboardData(options: DashboardDataOptions = {}) {
     const omit = new Set(omitKey ? omitKey.split('|') : []);
     async function silentRefresh() {
       try {
-        const [kursleiterverwaltungData, kursverwaltungData, kursanmeldungData] = await Promise.all([
+        // a failed list keeps its stale data out of the way: settle() only
+        // replaces what loaded or was refused
+        settle(await Promise.allSettled([
           omit.has('kursleiterverwaltung') ? Promise.resolve([] as Kursleiterverwaltung[]) : LivingAppsService.getKursleiterverwaltung(),
           omit.has('kursverwaltung') ? Promise.resolve([] as Kursverwaltung[]) : LivingAppsService.getKursverwaltung(),
           omit.has('kursanmeldung') ? Promise.resolve([] as Kursanmeldung[]) : LivingAppsService.getKursanmeldung(),
-        ]);
-        setKursleiterverwaltung(kursleiterverwaltungData);
-        setKursverwaltung(kursverwaltungData);
-        setKursanmeldung(kursanmeldungData);
+        ]));
       } catch {
         // silently ignore — stale data is better than no data
       }
@@ -79,7 +99,7 @@ export function useDashboardData(options: DashboardDataOptions = {}) {
     // both here, or every mutation fetches twice.
     window.addEventListener('assistant:data-changed', handleRefresh);
     return () => window.removeEventListener('assistant:data-changed', handleRefresh);
-  }, [omitKey]);
+  }, [omitKey, settle]);
 
   const kursleiterverwaltungMap = useMemo(() => {
     const m = new Map<string, Kursleiterverwaltung>();
@@ -93,7 +113,7 @@ export function useDashboardData(options: DashboardDataOptions = {}) {
     return m;
   }, [kursverwaltung]);
 
-  return { kursleiterverwaltung, setKursleiterverwaltung, kursverwaltung, setKursverwaltung, kursanmeldung, setKursanmeldung, loading, error, fetchAll, kursleiterverwaltungMap, kursverwaltungMap };
+  return { kursleiterverwaltung, setKursleiterverwaltung, kursverwaltung, setKursverwaltung, kursanmeldung, setKursanmeldung, loading, error, fetchAll, forbidden, kursleiterverwaltungMap, kursverwaltungMap };
 }
 
 /** The hook's return — the `data` prop of DashboardOverview in the Ready-Wrapper form. */

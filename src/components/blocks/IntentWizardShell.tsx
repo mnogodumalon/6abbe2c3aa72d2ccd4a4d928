@@ -24,6 +24,7 @@ import {
   IconClock,
   IconHistory,
   IconInfoCircle,
+  IconAdjustmentsHorizontal,
   IconX,
 } from '@tabler/icons-react';
 import { t, tp } from '@/i18n';
@@ -134,6 +135,14 @@ export interface WizardContextValue {
   /** Hide the shell's step heading while the caller is mounted — for blocks
    *  that bring their own (SummaryStep "Alles richtig?", SuccessStep). */
   suppressHeading(): () => void;
+  /** A StepNav announces itself while mounted (the shell renders one step at
+   *  a time, so this is "the current step has a Weiter"). Returns the release. */
+  registerNav(): () => void;
+  /** True while a StepNav is mounted on the current step. A single pick
+   *  (EntitySelectStep) moves the wizard on by itself ONLY when this is false:
+   *  five live flows dead-ended on step 1 because the hook's `pick()` hands
+   *  over `onSelect` and nobody called next() any more (inclou 24.09.2026). */
+  hasNav(): boolean;
 }
 
 const WizardContext = createContext<WizardContextValue | null>(null);
@@ -515,6 +524,15 @@ export function IntentWizardShell({
     onStepChange(1);
   };
 
+  // StepNavs on the current step, counted — a ref, not state: the pick reads
+  // it at click time and nothing needs to re-render when a nav mounts.
+  const navCountRef = useRef(0);
+  const registerNav = useCallback(() => {
+    navCountRef.current += 1;
+    return () => { navCountRef.current -= 1; };
+  }, []);
+  const hasNav = useCallback(() => navCountRef.current > 0, []);
+
   const ctx = useMemo<WizardContextValue>(
     () => ({
       step: currentStep,
@@ -531,8 +549,10 @@ export function IntentWizardShell({
       completed,
       suppressChips,
       suppressHeading,
+      registerNav,
+      hasNav,
     }),
-    [currentStep, position, total, steps, enabledSteps, nextEnabled, returnTo, goTo, next, prev, markCompleted, completed, suppressChips, suppressHeading],
+    [currentStep, position, total, steps, enabledSteps, nextEnabled, returnTo, goTo, next, prev, markCompleted, completed, suppressChips, suppressHeading, registerNav, hasNav],
   );
 
   if (loading) {
@@ -610,6 +630,19 @@ export function IntentWizardShell({
               {title && <h1 className="text-2xl font-bold tracking-tight">{title}</h1>}
               {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
             </div>
+            <div className="flex shrink-0 items-center gap-1">
+            {/* „Anpassen“ — the owner's way from the flow to where it is
+                described and changed („Deine Anwendung“, deep-linked to this
+                flow's group). Never on a public route: a visitor owns nothing. */}
+            {draftKey && !onPublicRoute && (
+              <a
+                href={`#/verwaltung/anwendung?line=${encodeURIComponent(`intent:${draftKey}`)}`}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <IconAdjustmentsHorizontal size={16} aria-hidden="true" />
+                {t('wz_adjust')}
+              </a>
+            )}
             {intro && !showIntro && (
               <Button
                 type="button"
@@ -623,6 +656,7 @@ export function IntentWizardShell({
                 {t('wz_intro_button')}
               </Button>
             )}
+            </div>
           </div>
         </div>
 
@@ -793,7 +827,7 @@ export function IntentWizardShell({
               </div>
 
               <div className="flex flex-wrap items-center gap-4 border-t border-border pt-6">
-                <Button type="button" onClick={startFlow} size="lg" className="gap-2" autoFocus>
+                <Button type="button" onClick={startFlow} size="lg" className="gap-2" autoFocus data-journey-start="">
                   {intro.startLabel ?? t('wz_intro_start')}
                   <IconArrowRight size={18} aria-hidden="true" />
                 </Button>

@@ -14,11 +14,11 @@
  * Deliberately NOT re-exported from the journey barrel: page code never
  * calls this — the loader and the admin pages import the module directly.
  */
-import { setFieldPolicy, type FieldPolicy } from './policy';
+import { setFieldPolicy, setPickPolicy, type FieldPolicy, type PickPolicy } from './policy';
 
 export interface IntentPoliciesArtifact {
   version: number;
-  flows: Record<string, { fields?: FieldPolicy }>;
+  flows: Record<string, { fields?: FieldPolicy; picks?: PickPolicy }>;
 }
 
 let cache: Promise<IntentPoliciesArtifact | null> | null = null;
@@ -45,10 +45,12 @@ export function intentSlugOf(pathname: string): string | null {
 export async function applyIntentPolicy(slug: string): Promise<void> {
   const artifact = await loadIntentPolicies();
   setFieldPolicy(artifact?.flows?.[slug]?.fields ?? null);
+  setPickPolicy(artifact?.flows?.[slug]?.picks ?? null);
 }
 
 export function clearFieldPolicy(): void {
   setFieldPolicy(null);
+  setPickPolicy(null);
 }
 
 /** How many rules a flow's policy carries — the badge on the flows' admin row. */

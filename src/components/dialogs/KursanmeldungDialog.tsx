@@ -117,6 +117,8 @@ export function KursanmeldungDialog({ open, onClose, onSubmit, defaultValues, re
     setCreateKursverwaltungInitial(q);
     setCreateKursverwaltungOpen(true);
   }
+  // Fields the plan assigns to a tool (empty without a plan).
+  const SYSTEM_ASSIGNED: string[] = [];
   const [showErrors, setShowErrors] = useState(false);
   const REQUIRED_FIELDS = ['teilnehmer_vorname', 'teilnehmer_nachname', 'teilnehmer_email', 'kurs'] as const;
   const missingRequired = REQUIRED_FIELDS.filter(k => {
@@ -347,7 +349,7 @@ export function KursanmeldungDialog({ open, onClose, onSubmit, defaultValues, re
         <Label htmlFor="teilnehmer_vorname">{fieldLabel('kursanmeldung', 'teilnehmer_vorname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="teilnehmer_vorname"
-          placeholder="z. B. Maria"
+          placeholder=""
           value={fields.teilnehmer_vorname ?? ''}
           onChange={e => setFields(f => ({ ...f, teilnehmer_vorname: e.target.value }))}
           required
@@ -362,7 +364,7 @@ export function KursanmeldungDialog({ open, onClose, onSubmit, defaultValues, re
         <Label htmlFor="teilnehmer_nachname">{fieldLabel('kursanmeldung', 'teilnehmer_nachname')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Input
           id="teilnehmer_nachname"
-          placeholder="z. B. Mueller"
+          placeholder=""
           value={fields.teilnehmer_nachname ?? ''}
           onChange={e => setFields(f => ({ ...f, teilnehmer_nachname: e.target.value }))}
           required
@@ -379,7 +381,7 @@ export function KursanmeldungDialog({ open, onClose, onSubmit, defaultValues, re
           id="teilnehmer_email"
           type="email"
           inputMode="email"
-          placeholder="z. B. maria.mueller@example.de"
+          placeholder=""
           value={fields.teilnehmer_email ?? ''}
           onChange={e => setFields(f => ({ ...f, teilnehmer_email: e.target.value }))}
           required
@@ -396,7 +398,7 @@ export function KursanmeldungDialog({ open, onClose, onSubmit, defaultValues, re
           id="teilnehmer_telefon"
           type="tel"
           inputMode="tel"
-          placeholder="z. B. +49 40 98765432"
+          placeholder=""
           value={fields.teilnehmer_telefon ?? ''}
           onChange={e => setFields(f => ({ ...f, teilnehmer_telefon: e.target.value }))}
         />
@@ -466,7 +468,7 @@ export function KursanmeldungDialog({ open, onClose, onSubmit, defaultValues, re
         <Label htmlFor="kurs">{fieldLabel('kursanmeldung', 'kurs')} <span className="text-destructive" aria-hidden="true">*</span></Label>
         <Combobox
           id="kurs"
-          placeholder="Für welchen Kurs möchtest du dich anmelden?"
+          placeholder=""
           items={kursverwaltungListAll.map(r => ({
             id: r.record_id,
             label: String(r.fields.kursname ?? r.record_id),
@@ -486,7 +488,7 @@ export function KursanmeldungDialog({ open, onClose, onSubmit, defaultValues, re
         <Label htmlFor="anmerkungen">{fieldLabel('kursanmeldung', 'anmerkungen')}</Label>
         <Textarea
           id="anmerkungen"
-          placeholder="Besonderheiten, Verletzungen, Wünsche, Fragen..."
+          placeholder=""
           value={fields.anmerkungen ?? ''}
           onChange={e => setFields(f => ({ ...f, anmerkungen: e.target.value }))}
           rows={3}
@@ -767,9 +769,25 @@ export function KursanmeldungDialog({ open, onClose, onSubmit, defaultValues, re
               const renderField = (k: string) => {
                 const inlineHints = computedLayout.anchors[k] ?? [];
                 const refs = applookupRefs[k] ?? [];
+                // A field the plan gives to a TOOL. On CREATE it is not shown
+                // at all — the value does not exist yet and typing one only
+                // gets overwritten. On EDIT it stays a normal input with a
+                // note: when a tool could not compose its value (a missing
+                // ingredient), this is the only place to repair the record.
+                if (SYSTEM_ASSIGNED.includes(k) && !recordId) {
+                  return (
+                    <div key={k} className="space-y-1.5 min-w-0">
+                      <Label>{fieldLabel('kursanmeldung', k)}</Label>
+                      <p className="text-sm text-muted-foreground">{t('assigned_by_system')}</p>
+                    </div>
+                  );
+                }
                 return (
                   <div key={k} className="space-y-1.5 min-w-0">
                     {fieldBlocks[k]}
+                    {SYSTEM_ASSIGNED.includes(k) && (
+                      <p className="text-xs text-muted-foreground">{t('assigned_by_system')}</p>
+                    )}
                     {refs.map(({ lookupKey }) => {
                       // Show the live numeric value the formula will pull from
                       // the selected lookup target (e.g. "Monatspreis: 34,90 €"

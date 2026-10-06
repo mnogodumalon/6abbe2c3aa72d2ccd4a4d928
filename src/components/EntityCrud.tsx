@@ -65,6 +65,8 @@ import { KursanmeldungDetails } from '@/components/details/KursanmeldungDetails'
 import { AI_PHOTO_SCAN, AI_PHOTO_LOCATION } from '@/config/ai-features';
 import { t, appLabel } from '@/i18n';
 import { undoToast } from '@/lib/polish';
+import { usePermissions } from '@/lib/permissions';
+import { toast } from 'sonner';
 import { formatDate } from '@/lib/formatters';
 
 // The overlay union — one branch per entity, `record` typed the way the data
@@ -92,6 +94,10 @@ export interface EntityCrudApi<TRecord, TDefaults> {
   openEdit: (record: TRecord) => void;
   /** Open the record overlay (raw record is fine — enrichment resolved inside). */
   openDetail: (record: TRecord) => void;
+  /** May the signed-in user create/change records of this list? (the
+   *  platform's rights — show a „+ Neu“ only when true; openCreate/openEdit
+   *  refuse with a notice otherwise). */
+  canWrite: boolean;
 }
 
 export interface EntityCrud {
@@ -110,6 +116,9 @@ export interface EntityCrud {
 
 export function useEntityCrud(data: EntityCrudData, options?: EntityCrudOptions): EntityCrud {
   const overlay = useRecordOverlayStack<OverlayItem>();
+  // the platform's rights of the signed-in user (lib/permissions.ts) — unknown = allowed
+  const perms = usePermissions();
+  const refuse = () => { toast.error(t('perm_denied_title'), { description: t('perm_denied_desc') }); };
   const [kursleiterverwaltungDialog, setKursleiterverwaltungDialog] = useState<{ defaults?: KursleiterverwaltungDialogDefaults; editing?: Kursleiterverwaltung } | null>(null);
   const [kursverwaltungDialog, setKursverwaltungDialog] = useState<{ defaults?: KursverwaltungDialogDefaults; editing?: Kursverwaltung } | null>(null);
   const [kursanmeldungDialog, setKursanmeldungDialog] = useState<{ defaults?: KursanmeldungDialogDefaults; editing?: Kursanmeldung } | null>(null);
@@ -246,7 +255,7 @@ export function useEntityCrud(data: EntityCrudData, options?: EntityCrudOptions)
                   record={top.record}
                   kursverwaltungList={data.kursverwaltung}
                   onOpenKursverwaltung={(r) => detailKursverwaltung(r, true)}
-                  onAddKursverwaltung={() => setKursverwaltungDialog({ defaults: { kursleiter: createRecordUrl(APP_IDS.KURSLEITERVERWALTUNG, top.record.record_id) } })}
+                  onAddKursverwaltung={perms.canWrite('kursverwaltung') ? () => setKursverwaltungDialog({ defaults: { kursleiter: createRecordUrl(APP_IDS.KURSLEITERVERWALTUNG, top.record.record_id) } }) : undefined}
                 />
               </>
             );
@@ -261,7 +270,7 @@ export function useEntityCrud(data: EntityCrudData, options?: EntityCrudOptions)
                   onOpenKursleiterverwaltung={(r) => detailKursleiterverwaltung(r, true)}
                   kursanmeldungList={data.kursanmeldung}
                   onOpenKursanmeldung={(r) => detailKursanmeldung(r, true)}
-                  onAddKursanmeldung={() => setKursanmeldungDialog({ defaults: { kurs: createRecordUrl(APP_IDS.KURSVERWALTUNG, top.record.record_id) } })}
+                  onAddKursanmeldung={perms.canWrite('kursanmeldung') ? () => setKursanmeldungDialog({ defaults: { kurs: createRecordUrl(APP_IDS.KURSVERWALTUNG, top.record.record_id) } }) : undefined}
                 />
               </>
             );
@@ -280,6 +289,12 @@ export function useEntityCrud(data: EntityCrudData, options?: EntityCrudOptions)
           }
           return null;
         }}
+        canEdit={(top) => {
+          if (top.type === 'kursleiterverwaltung') return perms.canWrite('kursleiterverwaltung');
+          if (top.type === 'kursverwaltung') return perms.canWrite('kursverwaltung');
+          if (top.type === 'kursanmeldung') return perms.canWrite('kursanmeldung');
+          return true;
+        }}
         onEdit={(top) => {
           overlay.close();
           if (top.type === 'kursleiterverwaltung') setKursleiterverwaltungDialog({ editing: top.record, defaults: top.record.fields });
@@ -294,19 +309,22 @@ export function useEntityCrud(data: EntityCrudData, options?: EntityCrudOptions)
     overlay,
     surfaces,
     kursleiterverwaltung: {
-      openCreate: (defaults?: KursleiterverwaltungDialogDefaults) => setKursleiterverwaltungDialog({ defaults }),
-      openEdit: (record: Kursleiterverwaltung) => setKursleiterverwaltungDialog({ editing: record, defaults: record.fields }),
+      openCreate: (defaults?: KursleiterverwaltungDialogDefaults) => (perms.canWrite('kursleiterverwaltung') ? setKursleiterverwaltungDialog({ defaults }) : refuse()),
+      openEdit: (record: Kursleiterverwaltung) => (perms.canWrite('kursleiterverwaltung') ? setKursleiterverwaltungDialog({ editing: record, defaults: record.fields }) : refuse()),
       openDetail: (record: Kursleiterverwaltung) => detailKursleiterverwaltung(record, false),
+      canWrite: perms.canWrite('kursleiterverwaltung'),
     },
     kursverwaltung: {
-      openCreate: (defaults?: KursverwaltungDialogDefaults) => setKursverwaltungDialog({ defaults }),
-      openEdit: (record: Kursverwaltung) => setKursverwaltungDialog({ editing: record, defaults: record.fields }),
+      openCreate: (defaults?: KursverwaltungDialogDefaults) => (perms.canWrite('kursverwaltung') ? setKursverwaltungDialog({ defaults }) : refuse()),
+      openEdit: (record: Kursverwaltung) => (perms.canWrite('kursverwaltung') ? setKursverwaltungDialog({ editing: record, defaults: record.fields }) : refuse()),
       openDetail: (record: Kursverwaltung) => detailKursverwaltung(record, false),
+      canWrite: perms.canWrite('kursverwaltung'),
     },
     kursanmeldung: {
-      openCreate: (defaults?: KursanmeldungDialogDefaults) => setKursanmeldungDialog({ defaults }),
-      openEdit: (record: Kursanmeldung) => setKursanmeldungDialog({ editing: record, defaults: record.fields }),
+      openCreate: (defaults?: KursanmeldungDialogDefaults) => (perms.canWrite('kursanmeldung') ? setKursanmeldungDialog({ defaults }) : refuse()),
+      openEdit: (record: Kursanmeldung) => (perms.canWrite('kursanmeldung') ? setKursanmeldungDialog({ editing: record, defaults: record.fields }) : refuse()),
       openDetail: (record: Kursanmeldung) => detailKursanmeldung(record, false),
+      canWrite: perms.canWrite('kursanmeldung'),
     },
     enriched: { kursleiterverwaltung: data.kursleiterverwaltung, kursverwaltung: enrichedKursverwaltung, kursanmeldung: enrichedKursanmeldung },
   };

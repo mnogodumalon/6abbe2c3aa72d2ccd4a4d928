@@ -69,6 +69,8 @@ export interface FieldPolicyEditorProps {
   view?: { to?: string; href?: string; label: string };
   /** Shown instead of the sections when the catalog has nothing to adjust. */
   emptyText?: string;
+  /** Rendered between the header and the sections (the flow's plan card). */
+  above?: ReactNode;
   showTexts?: boolean;
   savedText: string;
   /** Who fills the fields — "Besucher" for a page, "dein Team" for a flow. */
@@ -76,7 +78,7 @@ export interface FieldPolicyEditorProps {
 }
 
 export function FieldPolicyEditor(props: FieldPolicyEditorProps) {
-  const { load, save, onLoaded, heading, intro, note, badge, backTo, backLabel, view, emptyText, showTexts = false, savedText, who } = props;
+  const { load, save, onLoaded, heading, intro, note, badge, backTo, backLabel, view, emptyText, above, showTexts = false, savedText, who } = props;
   const [cat, setCat] = useState<PolicyCatalog | null>(null);
   const [draft, setDraft] = useState<PagePolicy>({ fields: {}, lists: {}, texts: {} });
   const [saved, setSaved] = useState<PagePolicy>({ fields: {}, lists: {}, texts: {} });
@@ -330,6 +332,8 @@ export function FieldPolicyEditor(props: FieldPolicyEditorProps) {
           {badge ?? null}
         </div>
       </div>
+
+      {above ?? null}
 
       {error ? (
         <p className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">

@@ -43,8 +43,8 @@ export interface IntentLink {
 
 export const INTENTS: IntentLink[] = [
   // <custom:intents>
-  { path: '/intents/kurs-anlegen', label: { de: 'Kurs anlegen', en: 'Create course' }, icon: IconCalendarPlus, description: 'Neuen Yoga-Kurs in drei Schritten anlegen und Kursleiter zuweisen' },
-  { path: '/intents/kurs-anmeldung', label: { de: 'Kurs anmelden', en: 'Register for course' }, icon: IconUserPlus, description: 'Teilnehmer in drei Schritten für einen Yoga-Kurs anmelden' },
+  { path: '/intents/kurs-anlegen', label: { de: 'Kurs anlegen', en: 'Create course' }, icon: IconCalendarPlus, description: { de: 'Neuen Yoga-Kurs in drei Schritten anlegen und Kursleiter zuweisen', en: 'Create a new yoga course in three steps and assign an instructor' } },
+  { path: '/intents/kurs-anmeldung', label: { de: 'Kurs anmelden', en: 'Register for course' }, icon: IconUserPlus, description: { de: 'Teilnehmer in drei Schritten für einen Yoga-Kurs anmelden', en: 'Register a participant for a yoga course in three steps' } },
   // </custom:intents>
 ];
 
@@ -64,5 +64,5 @@ export const INTENTS_PENDING = false;
  * pulsing "werden erstellt …" in every deployed Phase-1 bundle forever — no
  * code path redeploys Phase 1 without the flag (live 03.09.2026).
  */
-export const INTENTS_PENDING_SINCE: string | null = '2026-09-29T16:09:51+00:00';
+export const INTENTS_PENDING_SINCE: string | null = null;
 export const PENDING_MAX_MINUTES = 30;
